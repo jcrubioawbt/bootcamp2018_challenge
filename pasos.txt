@@ -1,3 +1,5 @@
+###Tabla usada: conversion_7
+
 #Crear directorio para guardar data a importar de MySQL(shell)
 hdfs dfs -mkdir /user/jcrubioa/bootcamp/product_transaction
 
