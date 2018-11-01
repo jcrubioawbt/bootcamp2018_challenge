@@ -1,0 +1,58 @@
+#Crear directorio para guardar data a importar de MySQL(shell)
+hdfs dfs -mkdir /user/jcrubioa/bootcamp/product_transaction
+
+#Crear base de datos(Hive)
+create database ecommerce_cloudera
+
+#Comando para importar tabla de MySQL(shell)
+sqoop import --connect jdbc:mysql://34.205.65.241:3306/ecommerce_cloudera --table product_transaction --username bootcamp --password bootcamp --target-dir /user/jcrubioa/bootcamp/product_transaction --hive-import --hive-table ecommerce_cloudera.product_transaction
+
+#Descargar weblogs a un host(shell)
+wget http://34.205.65.241/access.log
+
+#Crear directorio para guardar data a importar de weblogs(shell)
+hdfs dfs -mkdir /user/jcrubioa/bootcamp/web_logs
+
+#Subir los weblogs al directorio en HDFS(shell)
+hdfs dfs -put access.log /user/jcrubioa/bootcamp/web_logs
+
+#Crear tabla en Hive con las propiedades regex(Hive) 
+
+CREATE EXTERNAL TABLE ecommerce_cloudera.web_logs (
+        ip STRING,
+        time_local STRING,
+        method STRING,
+        uri STRING,
+        protocol STRING,
+        status STRING,
+        bytes_sent STRING,
+        referer STRING,
+        useragent STRING
+    )
+    ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
+    WITH SERDEPROPERTIES ('input.regex'='^(\\S+) \\S+ \\S+ \\[([^\\[]+)\\] "(\\w+) (\\S+) (\\S+)" (\\d+) (\\d+) "([^"]+)" "([^"]+)".*')
+    LOCATION '/user/jcrubioa/bootcamp/web_logs';
+
+#Create table as para poder usar la tabla serde con Impala. Se realiza conteo de visualizaciones.
+create table visualizations as 
+    select count(*) from web_logs 
+    group by uri;
+
+#Se agrupan los totales de ventas para cada producto en una tabla
+create table sales as
+    select product_id, sum(product_cantity) as product_cantity from product_transaction 
+    group by product_id;
+
+#Calcular resultados finales
+create table result 
+    row format delimited fields terminated by '|'
+    location '/user/jcrubioa/bootcamp/result'
+    as 
+    select product_id as sku, product_cantity/v_count as conversion
+        from sales join visualizations 
+        on(product_id = 
+            cast(replace(visualizations.uri, "/item/id?skuID=", "") as Int) 
+        );
+
+#Exportar a MySQL con el archivo generado por impala
+sqoop export --connect jdbc:mysql://34.205.65.241:3306/ecommerce_cloudera --username bootcamp --password bootcamp --table conversion_7 --export-dir /user/jcrubioa/bootcamp/result/aa4de04daab7732e-d4e0ada900000004_1438935859_data.0. --fields-terminated-by "|"
